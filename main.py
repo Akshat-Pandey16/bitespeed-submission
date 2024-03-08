@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Body
 from sqlalchemy.orm import Session
 from db import create_database, get_db, Contact
 from datetime import datetime
@@ -50,7 +50,9 @@ def get_linked_info(db: Session, primary_contact_id: int, link_precedence: str):
 
 
 @app.post("/identify", status_code=200)
-def identify(email: str = None, phoneNumber: str = None, db: Session = Depends(get_db)):
+def identify(data: dict = Body(...), db: Session = Depends(get_db)):
+    email = data.get("email")
+    phoneNumber = data.get("phoneNumber")
     if email is None and phoneNumber is None:
         raise HTTPException(
             status_code=400, detail="Either email or phoneNumber must be provided."
