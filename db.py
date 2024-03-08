@@ -23,4 +23,7 @@ class Contact(Base):
     deletedAt = Column(DateTime(timezone=True), nullable=True)
 
 def create_tables():
-    Base.metadata.create_all(bind=engine)
+    with engine.connect() as connection:
+        if not connection.dialect.has_table(connection, "contacts"):
+            Base.metadata.create_all(bind=engine)
+
