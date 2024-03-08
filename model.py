@@ -1,6 +1,6 @@
 from pydantic import BaseModel
+from typing import Optional
 
-
-class IdentifyInput(BaseModel):
-    email: str
-    phone_number: str
+class ContactModel(BaseModel):
+  email: Optional[str] = None
+  phoneNumber: Optional[str] = None

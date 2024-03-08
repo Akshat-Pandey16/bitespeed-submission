@@ -1,8 +1,9 @@
-from fastapi import FastAPI, HTTPException, Depends, Body
+from fastapi import FastAPI, HTTPException, Depends
 from sqlalchemy.orm import Session
 from db import create_database, get_db, Contact
 from datetime import datetime
-
+from collections import OrderedDict
+from model import ContactModel
 
 app = FastAPI()
 
@@ -51,9 +52,9 @@ def get_linked_info(db: Session, primary_contact_id: int, link_precedence: str):
 
 
 @app.post("/identify", status_code=200)
-def identify(data: dict = Body(...), db: Session = Depends(get_db)):
-    email = data.get("email")
-    phoneNumber = data.get("phoneNumber")
+def identify(data: ContactModel, db: Session = Depends(get_db)):
+    email = data.email
+    phoneNumber = data.phoneNumber
     if email is None and phoneNumber is None:
         raise HTTPException(
             status_code=400, detail="Either email or phoneNumber must be provided."
@@ -76,15 +77,22 @@ def identify(data: dict = Body(...), db: Session = Depends(get_db)):
 
         secondary_info = get_linked_info(db, exist_contact.id, "secondary")
 
-        return {
-            "contact": {
-                "primaryContactId": exist_contact.id,
-                "emails": list(set([exist_contact.email] + secondary_info["emails"])),
-                "phoneNumbers": list(set([exist_contact.phoneNumber]
-                + secondary_info["phoneNumbers"])),
-                "secondaryContactIds": secondary_info["contactIds"],
+        return OrderedDict(
+            {
+                "contact": {
+                    "primaryContactId": exist_contact.id,
+                    "emails": list(
+                        set([exist_contact.email] + secondary_info["emails"])
+                    ),
+                    "phoneNumbers": list(
+                        set(
+                            [exist_contact.phoneNumber] + secondary_info["phoneNumbers"]
+                        )
+                    ),
+                    "secondaryContactIds": secondary_info["contactIds"],
+                }
             }
-        }
+        )
 
     new_contact = Contact(
         phoneNumber=phoneNumber,
@@ -98,14 +106,16 @@ def identify(data: dict = Body(...), db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_contact)
 
-    return {
-        "contact": {
-            "primaryContactId": new_contact.id,
-            "emails": [new_contact.email],
-            "phoneNumbers": [new_contact.phoneNumber],
-            "secondaryContactId": None,
+    return OrderedDict(
+        {
+            "contact": {
+                "primaryContactId": new_contact.id,
+                "emails": [new_contact.email],
+                "phoneNumbers": [new_contact.phoneNumber],
+                "secondaryContactId": None,
+            }
         }
-    }
+    )
 
 
 @app.get("/view-contacts")
