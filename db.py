@@ -1,29 +1,33 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey
-from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy.sql import func
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Enum, MetaData
+from sqlalchemy.orm import declarative_base, Session
 
-DATABASE_URL = "sqlite:///./contact.db" 
+DATABASE_URL = "sqlite:///./contact.db"
 
 engine = create_engine(DATABASE_URL)
+metadata = MetaData()
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-Base = declarative_base()
+Base = declarative_base(metadata=metadata)
 
 class Contact(Base):
-    __tablename__ = "contacts"
+    __tablename__ = "contact"
 
     id = Column(Integer, primary_key=True, index=True)
     phoneNumber = Column(String, nullable=True)
     email = Column(String, nullable=True)
-    linkedId = Column(Integer, ForeignKey("contacts.id"), nullable=True)
-    linkPrecedence = Column(String, nullable=False)  # "primary" or "secondary"
-    createdAt = Column(DateTime(timezone=True), server_default=func.now())
-    updatedAt = Column(DateTime(timezone=True), onupdate=func.now())
-    deletedAt = Column(DateTime(timezone=True), nullable=True)
+    linkedId = Column(Integer, ForeignKey("contact.id"), nullable=True)
+    linkPrecedence = Column(Enum("primary", "secondary"), nullable=False)
+    createdAt = Column(DateTime)
+    updatedAt = Column(DateTime)
+    deletedAt = Column(DateTime, nullable=True)
 
-def create_tables():
-    with engine.connect() as connection:
-        if not connection.dialect.has_table(connection, "contacts"):
-            Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
+def create_database():
+    Base.metadata.create_all(bind=engine)
+
+def get_db():
+    db = Session(engine)
+    try:
+        yield db
+    finally:
+        db.close()

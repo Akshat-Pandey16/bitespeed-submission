@@ -1,96 +1,66 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from sqlalchemy.orm import Session
-from db import create_tables, Contact, SessionLocal
-from model import IdentifyInput
+from db import create_database, get_db, Contact
+from datetime import datetime
 
 app = FastAPI()
 
-create_tables()
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+create_database()
 
 
 @app.post("/identify", status_code=200)
-async def identify(data: IdentifyInput, db: Session = Depends(get_db)):
-    email = data.email
-    phone_number = data.phone_number
-
-    if not email and not phone_number:
+def identify(email: str = None, phoneNumber: str = None, db: Session = Depends(get_db)):
+    if email is None and phoneNumber is None:
         raise HTTPException(
-            status_code=400, detail="Either Email or Ph. Number must be provided."
+            status_code=400, detail="Either email or phoneNumber must be provided."
         )
 
-    existing_contact = (
-        db.query(Contact)
-        .filter((Contact.email == email) | (Contact.phoneNumber == phone_number))
-        .first()
-    )
+    primary_contact = None
 
-    if existing_contact:
-        if (
-            existing_contact.email == email
-            and existing_contact.phoneNumber == phone_number
-        ):
-            return {"message": "User already exists"}
-
-        new_secondary_contact = Contact(
-            email=email,
-            phoneNumber=phone_number,
-            linkPrecedence="secondary",
-            linkedId=existing_contact.id,
+    if email:
+        primary_contact = (
+            db.query(Contact)
+            .filter((Contact.email == email) | (Contact.linkPrecedence == "primary"))
+            .first()
         )
-        db.add(new_secondary_contact)
-        db.commit()
-
-        secondary_contacts = (
+    elif phoneNumber:
+        primary_contact = (
             db.query(Contact)
             .filter(
-                Contact.linkedId == existing_contact.id,
-                Contact.linkPrecedence == "secondary",
+                (Contact.phoneNumber == phoneNumber)
+                | (Contact.linkPrecedence == "primary")
             )
-            .all()
+            .first()
         )
-        unique_emails = list(
-            set(
-                [existing_contact.email]
-                + [contact.email for contact in secondary_contacts]
-            )
-        )
-        unique_phone_numbers = list(
-            set(
-                [existing_contact.phoneNumber]
-                + [contact.phoneNumber for contact in secondary_contacts]
-            )
-        )
-        
-        updated_contact = {
-            "primaryContactId": existing_contact.id,
-            "emails": unique_emails,
-            "phoneNumbers": unique_phone_numbers,
-            "secondaryContactIds": [contact.id for contact in secondary_contacts],
-        }
 
-    else:
-        new_contact = Contact(
-            email=email, phoneNumber=phone_number, linkPrecedence="primary"
+    if primary_contact:
+        secondary_contact = Contact(
+            phoneNumber=phoneNumber,
+            email=email,
+            linkedId=primary_contact.id,
+            linkPrecedence="secondary",
+            createdAt=datetime.now(),
+            updatedAt=datetime.now(),
         )
-        db.add(new_contact)
+        db.add(secondary_contact)
         db.commit()
+        db.refresh(secondary_contact)
 
-        updated_contact = {
-            "primaryContactId": new_contact.id,
-            "emails": [new_contact.email],
-            "phoneNumbers": [new_contact.phoneNumber],
-            "secondaryContactIds": [],
-        }
+        return {"message": "Secondary contact created successfully."}
 
-    return {"contact": updated_contact}
+    new_contact = Contact(
+        phoneNumber=phoneNumber,
+        email=email,
+        linkedId=None,
+        linkPrecedence="primary",
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+    )
+    db.add(new_contact)
+    db.commit()
+    db.refresh(new_contact)
+
+    return {"message": "Primary contact created successfully."}
 
 
 @app.get("/view-contacts")
@@ -106,10 +76,6 @@ async def flush_database(db: Session = Depends(get_db)):
     return {"message": "Database flushed successfully"}
 
 
-# @app.post("/create-database")
-# async def create_database(db: Session = Depends(get_db)):
-#     if not db.dialect.has_table(db, "contacts"):
-#         create_tables()
-#         return {"message": "Database created successfully"}
-#     else:
-#         return {"message": "Database already exists"}
+@app.get("/")
+def read_root():
+    return {"Hello": "World"}
