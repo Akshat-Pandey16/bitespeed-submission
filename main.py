@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from db import create_database, get_db, Contact
 from datetime import datetime
 
+
 app = FastAPI()
 
 create_database()
