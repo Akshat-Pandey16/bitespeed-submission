@@ -8,23 +8,15 @@ app = FastAPI()
 create_database()
 
 
-@app.post("/identify", status_code=200)
-def identify(email: str = None, phoneNumber: str = None, db: Session = Depends(get_db)):
-    if email is None and phoneNumber is None:
-        raise HTTPException(
-            status_code=400, detail="Either email or phoneNumber must be provided."
-        )
-
-    primary_contact = None
-
+def get_exist_contact(db: Session, email: str = None, phoneNumber: str = None):
     if email:
-        primary_contact = (
+        return (
             db.query(Contact)
             .filter((Contact.email == email) | (Contact.linkPrecedence == "primary"))
             .first()
         )
     elif phoneNumber:
-        primary_contact = (
+        return (
             db.query(Contact)
             .filter(
                 (Contact.phoneNumber == phoneNumber)
@@ -33,11 +25,44 @@ def identify(email: str = None, phoneNumber: str = None, db: Session = Depends(g
             .first()
         )
 
-    if primary_contact:
+
+def get_linked_info(db: Session, primary_contact_id: int, link_precedence: str):
+    contacts = (
+        db.query(Contact)
+        .filter(
+            Contact.linkedId == primary_contact_id,
+            Contact.linkPrecedence == link_precedence,
+        )
+        .all()
+    )
+
+    result = {
+        "emails": [contact.email for contact in contacts if contact.email is not None],
+        "phoneNumbers": [
+            contact.phoneNumber
+            for contact in contacts
+            if contact.phoneNumber is not None
+        ],
+        "contactIds": [contact.id for contact in contacts],
+    }
+
+    return result
+
+
+@app.post("/identify", status_code=200)
+def identify(email: str = None, phoneNumber: str = None, db: Session = Depends(get_db)):
+    if email is None and phoneNumber is None:
+        raise HTTPException(
+            status_code=400, detail="Either email or phoneNumber must be provided."
+        )
+
+    exist_contact = get_exist_contact(db, email=email, phoneNumber=phoneNumber)
+
+    if exist_contact:
         secondary_contact = Contact(
             phoneNumber=phoneNumber,
             email=email,
-            linkedId=primary_contact.id,
+            linkedId=exist_contact.id,
             linkPrecedence="secondary",
             createdAt=datetime.now(),
             updatedAt=datetime.now(),
@@ -46,7 +71,17 @@ def identify(email: str = None, phoneNumber: str = None, db: Session = Depends(g
         db.commit()
         db.refresh(secondary_contact)
 
-        return {"message": "Secondary contact created successfully."}
+        secondary_info = get_linked_info(db, exist_contact.id, "secondary")
+
+        return {
+            "contact": {
+                "primaryContactId": exist_contact.id,
+                "emails": list(set([exist_contact.email] + secondary_info["emails"])),
+                "phoneNumbers": list(set([exist_contact.phoneNumber]
+                + secondary_info["phoneNumbers"])),
+                "secondaryContactIds": secondary_info["contactIds"],
+            }
+        }
 
     new_contact = Contact(
         phoneNumber=phoneNumber,
@@ -60,7 +95,14 @@ def identify(email: str = None, phoneNumber: str = None, db: Session = Depends(g
     db.commit()
     db.refresh(new_contact)
 
-    return {"message": "Primary contact created successfully."}
+    return {
+        "contact": {
+            "primaryContactId": new_contact.id,
+            "emails": [new_contact.email],
+            "phoneNumbers": [new_contact.phoneNumber],
+            "secondaryContactId": None,
+        }
+    }
 
 
 @app.get("/view-contacts")
