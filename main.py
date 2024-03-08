@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
 from db import create_tables, Contact, SessionLocal
+from model import IdentifyInput
 
 app = FastAPI()
 
@@ -16,9 +17,9 @@ def get_db():
 
 
 @app.post("/identify", status_code=200)
-async def identify(email: str, phone_number: str, db: Session = Depends(get_db)):
-    email = email
-    phone_number = phone_number
+async def identify(data: IdentifyInput, db: Session = Depends(get_db)):
+    email = data.email
+    phone_number = data.phone_number
 
     if not email and not phone_number:
         raise HTTPException(
@@ -55,7 +56,6 @@ async def identify(email: str, phone_number: str, db: Session = Depends(get_db))
             )
             .all()
         )
-
         unique_emails = list(
             set(
                 [existing_contact.email]
@@ -68,7 +68,7 @@ async def identify(email: str, phone_number: str, db: Session = Depends(get_db))
                 + [contact.phoneNumber for contact in secondary_contacts]
             )
         )
-
+        
         updated_contact = {
             "primaryContactId": existing_contact.id,
             "emails": unique_emails,
@@ -108,7 +108,6 @@ async def flush_database(db: Session = Depends(get_db)):
 
 # @app.post("/create-database")
 # async def create_database(db: Session = Depends(get_db)):
-#     # Check if the "contacts" table already exists
 #     if not db.dialect.has_table(db, "contacts"):
 #         create_tables()
 #         return {"message": "Database created successfully"}
