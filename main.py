@@ -14,15 +14,14 @@ def get_exist_contact(db: Session, email: str = None, phoneNumber: str = None):
     if email:
         return (
             db.query(Contact)
-            .filter((Contact.email == email) | (Contact.linkPrecedence == "primary"))
+            .filter(Contact.email == email, Contact.linkPrecedence == "primary")
             .first()
         )
     elif phoneNumber:
         return (
             db.query(Contact)
             .filter(
-                (Contact.phoneNumber == phoneNumber)
-                | (Contact.linkPrecedence == "primary")
+                Contact.phoneNumber == phoneNumber, Contact.linkPrecedence == "primary"
             )
             .first()
         )
