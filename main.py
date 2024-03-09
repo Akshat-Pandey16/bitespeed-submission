@@ -21,6 +21,54 @@ def identify_contact(data: ContactInput, db: Session = Depends(get_db)):
     contact_email = db.query(Contact).filter(Contact.email == email).first()
     contact_phone = db.query(Contact).filter(Contact.phoneNumber == phoneNumber).first()
 
+    if contact_email and contact_phone:
+        if (
+            contact_email.linkPrecedence == "primary"
+            and contact_phone.linkPrecedence == "primary"
+        ):
+            if contact_email.id > contact_phone.id:
+                contact_email.linkedId = contact_phone.id
+                contact_email.linkPrecedence = "secondary"
+                db.commit()
+                db.refresh(contact_email)
+                linkedid = contact_phone.id
+            else:
+                contact_phone.linkedId = contact_email.id
+                contact_phone.linkPrecedence = "secondary"
+                db.commit()
+                db.refresh(contact_phone)
+                linkedid = contact_email.id
+
+            primary_contact = db.query(Contact).filter(Contact.id == linkedid).first()
+            secondary_contacts = (
+                db.query(Contact)
+                .filter(
+                    Contact.linkedId == linkedid, Contact.linkPrecedence == "secondary"
+                )
+                .all()
+            )
+            email_list = [primary_contact.email] + [
+                contact.email for contact in secondary_contacts if contact.email
+            ]
+            phone_list = [primary_contact.phoneNumber] + [
+                contact.phoneNumber
+                for contact in secondary_contacts
+                if contact.phoneNumber
+            ]
+
+            response_data = OrderedDict(
+                {
+                    "primaryContatctId": primary_contact.id,
+                    "emails": list(OrderedDict.fromkeys(email_list)),
+                    "phoneNumbers": list(OrderedDict.fromkeys(phone_list)),
+                    "secondaryContactIds": [
+                        contact.id for contact in secondary_contacts
+                    ],
+                }
+            )
+
+            return {"contact": response_data}
+
     if contact_email or contact_phone:
         existing_contact = contact_email or contact_phone
         if existing_contact.linkPrecedence == "secondary":
@@ -117,28 +165,3 @@ def view_database(db: Session = Depends(get_db)):
 @app.get("/")
 def read_root():
     return {"message": "Hello, FastAPI!"}
-
-
-# @app.post("/create-contact")
-# def create_contact(
-#     phoneNumber: str = None,
-#     email: str = None,
-#     linkedId: int = None,
-#     linkPrecedence: str = None,
-#     db: Session = Depends(get_db),
-# ):
-#     if phoneNumber is None and email is None:
-#         raise HTTPException(
-#             status_code=400, detail="Either email or phoneNumber is required"
-#         )
-#     else:
-#         new_contact = Contact(
-#             phoneNumber=phoneNumber,
-#             email=email,
-#             linkedId=linkedId,
-#             linkPrecedence=linkPrecedence,
-#         )
-#         db.add(new_contact)
-#         db.commit()
-#         db.refresh(new_contact)
-#         return {"message": "Contact created successfully"}
