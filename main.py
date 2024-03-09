@@ -8,6 +8,7 @@ app = FastAPI()
 
 create_database()
 
+
 @app.post("/identify")
 def identify_contact(data: ContactInput, db: Session = Depends(get_db)):
     email = data.email
@@ -50,11 +51,12 @@ def identify_contact(data: ContactInput, db: Session = Depends(get_db)):
             .all()
         )
 
+        # Filter out None values from the lists
         email_list = [primary_contact.email] + [
-            contact.email for contact in secondary_contacts
+            contact.email for contact in secondary_contacts if contact.email
         ]
         phone_list = [primary_contact.phoneNumber] + [
-            contact.phoneNumber for contact in secondary_contacts
+            contact.phoneNumber for contact in secondary_contacts if contact.phoneNumber
         ]
 
         response_data = OrderedDict(
@@ -79,10 +81,16 @@ def identify_contact(data: ContactInput, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(primary_contact)
 
+        # Filter out None values from the lists
+        email_list = [primary_contact.email] if primary_contact.email else []
+        phone_list = (
+            [primary_contact.phoneNumber] if primary_contact.phoneNumber else []
+        )
+
         response_data = {
             "primaryContatctId": primary_contact.id,
-            "emails": [primary_contact.email],
-            "phoneNumbers": [primary_contact.phoneNumber],
+            "emails": email_list,
+            "phoneNumbers": phone_list,
             "secondaryContactIds": [],
         }
 
