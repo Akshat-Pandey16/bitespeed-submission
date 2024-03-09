@@ -1,45 +1,33 @@
-from sqlalchemy import (
-    create_engine,
-    Column,
-    Integer,
-    String,
-    DateTime,
-    ForeignKey,
-    Enum,
-    MetaData,
-)
-from sqlalchemy.orm import declarative_base, Session
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy.orm import declarative_base, relationship, Session
+from sqlalchemy.sql import func
 
 DATABASE_URL = "sqlite:///./contact.db"
 
 engine = create_engine(DATABASE_URL)
-metadata = MetaData()
-
-Base = declarative_base(metadata=metadata)
+Base = declarative_base()
 
 
 class Contact(Base):
-    __tablename__ = "contact"
+    __tablename__ = "contacts"
 
     id = Column(Integer, primary_key=True, index=True)
     phoneNumber = Column(String, nullable=True)
     email = Column(String, nullable=True)
-    linkedId = Column(Integer, ForeignKey("contact.id"), nullable=True)
-    linkPrecedence = Column(Enum("primary", "secondary"), nullable=False)
-    createdAt = Column(DateTime)
-    updatedAt = Column(DateTime)
-    deletedAt = Column(DateTime, nullable=True)
+    linkedId = Column(Integer, ForeignKey("contacts.id"), nullable=True)
+    linkPrecedence = Column(String, nullable=False)
+    createdAt = Column(DateTime(timezone=True), server_default=func.now())
+    updatedAt = Column(DateTime(timezone=True), onupdate=func.now())
+    deletedAt = Column(DateTime(timezone=True), nullable=True)
 
-
-Base.metadata.create_all(bind=engine)
+    linked_contacts = relationship("Contact", remote_side=[id])
 
 
 def create_database():
     Base.metadata.create_all(bind=engine)
 
-
 def get_db():
-    db = Session(engine)
+    db = Session(bind=engine)
     try:
         yield db
     finally:

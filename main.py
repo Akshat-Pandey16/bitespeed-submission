@@ -1,135 +1,135 @@
 from fastapi import FastAPI, HTTPException, Depends
 from sqlalchemy.orm import Session
-from db import create_database, get_db, Contact
-from datetime import datetime
-from collections import OrderedDict
-from model import ContactModel
+from db import create_database, Contact, get_db
+from model import ContactInput
 
 app = FastAPI()
 
 create_database()
 
-def get_exist_contact(db: Session, email: str = None, phoneNumber: str = None):
-    if email:
-        return (
-            db.query(Contact)
-            .filter((Contact.email == email) | (Contact.linkPrecedence == "primary"))
-            .first()
-        )
-    elif phoneNumber:
-        return (
-            db.query(Contact)
-            .filter(
-                (Contact.phoneNumber == phoneNumber)
-                | (Contact.linkPrecedence == "primary")
-            )
-            .first()
-        )
 
-
-def get_linked_info(db: Session, primary_contact_id: int, link_precedence: str):
-    contacts = (
-        db.query(Contact)
-        .filter(
-            Contact.linkedId == primary_contact_id,
-            Contact.linkPrecedence == link_precedence,
-        )
-        .all()
-    )
-
-    result = {
-        "emails": [contact.email for contact in contacts if contact.email is not None],
-        "phoneNumbers": [
-            contact.phoneNumber
-            for contact in contacts
-            if contact.phoneNumber is not None
-        ],
-        "contactIds": [contact.id for contact in contacts],
-    }
-
-    return result
-
-
-@app.post("/identify", status_code=200)
-def identify(data: ContactModel, db: Session = Depends(get_db)):
+@app.post("/identify")
+def identify_contact(data: ContactInput, db: Session = Depends(get_db)):
     email = data.email
     phoneNumber = data.phoneNumber
     if email is None and phoneNumber is None:
         raise HTTPException(
-            status_code=400, detail="Either email or phoneNumber must be provided."
+            status_code=400, detail="Either email or phoneNumber is required"
         )
 
-    exist_contact = get_exist_contact(db, email=email, phoneNumber=phoneNumber)
+    contact_email = db.query(Contact).filter(Contact.email == email).first()
+    contact_phone = db.query(Contact).filter(Contact.phoneNumber == phoneNumber).first()
 
-    if exist_contact:
-        secondary_contact = Contact(
-            phoneNumber=phoneNumber,
-            email=email,
-            linkedId=exist_contact.id,
-            linkPrecedence="secondary",
-            createdAt=datetime.now(),
-            updatedAt=datetime.now(),
-        )
+    if contact_email or contact_phone:
+        existing_contact = contact_email or contact_phone
+        if existing_contact.linkPrecedence == "secondary":
+            secondary_contact = Contact(
+                phoneNumber=phoneNumber,
+                email=email,
+                linkedId=existing_contact.linkedId,
+                linkPrecedence="secondary",
+            )
+            linkedid = existing_contact.linkedId
+        else:
+            secondary_contact = Contact(
+                phoneNumber=phoneNumber,
+                email=email,
+                linkedId=existing_contact.id,
+                linkPrecedence="secondary",
+            )
+            linkedid = existing_contact.id
+
         db.add(secondary_contact)
         db.commit()
         db.refresh(secondary_contact)
 
-        secondary_info = get_linked_info(db, exist_contact.id, "secondary")
-
-        return OrderedDict(
-            {
-                "contact": {
-                    "primaryContactId": exist_contact.id,
-                    "emails": list(
-                        set([exist_contact.email] + secondary_info["emails"])
-                    ),
-                    "phoneNumbers": list(
-                        set(
-                            [exist_contact.phoneNumber] + secondary_info["phoneNumbers"]
-                        )
-                    ),
-                    "secondaryContactIds": secondary_info["contactIds"],
-                }
-            }
+        primary_contact = db.query(Contact).filter(Contact.id == linkedid).first()
+        secondary_contacts = (
+            db.query(Contact)
+            .filter(Contact.linkedId == linkedid, Contact.linkPrecedence == "secondary")
+            .all()
         )
 
-    new_contact = Contact(
-        phoneNumber=phoneNumber,
-        email=email,
-        linkedId=None,
-        linkPrecedence="primary",
-        createdAt=datetime.now(),
-        updatedAt=datetime.now(),
-    )
-    db.add(new_contact)
-    db.commit()
-    db.refresh(new_contact)
-
-    return OrderedDict(
-        {
-            "contact": {
-                "primaryContactId": new_contact.id,
-                "emails": [new_contact.email],
-                "phoneNumbers": [new_contact.phoneNumber],
-                "secondaryContactId": None,
-            }
+        response_data = {
+            "primaryContatctId": primary_contact.id,
+            "emails": set(
+                [primary_contact.email]
+                + [contact.email for contact in secondary_contacts]
+            ),
+            "phoneNumbers": set(
+                [primary_contact.phoneNumber]
+                + [contact.phoneNumber for contact in secondary_contacts]
+            ),
+            "secondaryContactIds": [contact.id for contact in secondary_contacts],
         }
-    )
+
+        return {"contact": response_data}
+
+    else:
+        primary_contact = Contact(
+            phoneNumber=phoneNumber,
+            email=email,
+            linkedId=None,
+            linkPrecedence="primary",
+        )
+        db.add(primary_contact)
+        db.commit()
+        db.refresh(primary_contact)
+
+        response_data = {
+            "primaryContatctId": primary_contact.id,
+            "emails": [primary_contact.email],
+            "phoneNumbers": [primary_contact.phoneNumber],
+            "secondaryContactIds": [],
+        }
+
+        return {"contact": response_data}
 
 
-@app.get("/view-contacts")
-async def view_contacts(db: Session = Depends(get_db)):
+@app.post("/flush-database")
+def flush_database(db: Session = Depends(get_db)):
+    try:
+        db.query(Contact).delete()
+        db.commit()
+        return {"message": "Database flushed successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=500, detail=f"Error flushing database: {str(e)}"
+        )
+
+
+@app.get("/view-database")
+def view_database(db: Session = Depends(get_db)):
     contacts = db.query(Contact).all()
     return {"contacts": contacts}
 
 
-@app.post("/flush-database")
-async def flush_database(db: Session = Depends(get_db)):
-    db.query(Contact).delete()
-    db.commit()
-    return {"message": "Database flushed successfully"}
-
-
 @app.get("/")
 def read_root():
-    return {"Hello": "World"}
+    return {"message": "Hello, FastAPI!"}
+
+
+# @app.post("/create-contact")
+# def create_contact(
+#     phoneNumber: str = None,
+#     email: str = None,
+#     linkedId: int = None,
+#     linkPrecedence: str = None,
+#     db: Session = Depends(get_db),
+# ):
+#     if phoneNumber is None and email is None:
+#         raise HTTPException(
+#             status_code=400, detail="Either email or phoneNumber is required"
+#         )
+#     else:
+#         new_contact = Contact(
+#             phoneNumber=phoneNumber,
+#             email=email,
+#             linkedId=linkedId,
+#             linkPrecedence=linkPrecedence,
+#         )
+#         db.add(new_contact)
+#         db.commit()
+#         db.refresh(new_contact)
+#         return {"message": "Contact created successfully"}
