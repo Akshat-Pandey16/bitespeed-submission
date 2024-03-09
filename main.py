@@ -2,11 +2,11 @@ from fastapi import FastAPI, HTTPException, Depends
 from sqlalchemy.orm import Session
 from db import create_database, Contact, get_db
 from model import ContactInput
+from collections import OrderedDict
 
 app = FastAPI()
 
 create_database()
-
 
 @app.post("/identify")
 def identify_contact(data: ContactInput, db: Session = Depends(get_db)):
@@ -50,18 +50,21 @@ def identify_contact(data: ContactInput, db: Session = Depends(get_db)):
             .all()
         )
 
-        response_data = {
-            "primaryContatctId": primary_contact.id,
-            "emails": set(
-                [primary_contact.email]
-                + [contact.email for contact in secondary_contacts]
-            ),
-            "phoneNumbers": set(
-                [primary_contact.phoneNumber]
-                + [contact.phoneNumber for contact in secondary_contacts]
-            ),
-            "secondaryContactIds": [contact.id for contact in secondary_contacts],
-        }
+        email_list = [primary_contact.email] + [
+            contact.email for contact in secondary_contacts
+        ]
+        phone_list = [primary_contact.phoneNumber] + [
+            contact.phoneNumber for contact in secondary_contacts
+        ]
+
+        response_data = OrderedDict(
+            {
+                "primaryContatctId": primary_contact.id,
+                "emails": list(OrderedDict.fromkeys(email_list)),
+                "phoneNumbers": list(OrderedDict.fromkeys(phone_list)),
+                "secondaryContactIds": [contact.id for contact in secondary_contacts],
+            }
+        )
 
         return {"contact": response_data}
 
