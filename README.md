@@ -7,6 +7,10 @@ Access apis using /docs or curl
 
 https://bitespeed-identify-api.onrender.com
 
+## Endpoint Exposed on 
+
+https://bitespeed-identify-api.onrender.com/identify
+
 ## Test with Swagger using
 
 https://bitespeed-identify-api.onrender.com/docs
